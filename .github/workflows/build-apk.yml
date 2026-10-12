@@ -1,14 +1,24 @@
-name: Compiler APK
-
+name: Compiler APK Android
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - principal
+      - main
+    paths:
+      - '.github/workflows/build-apk.yml'
+      - '*.zip'
+
+permissions:
+  contents: read
 
 jobs:
   build:
+    name: Construire l'application
     runs-on: ubuntu-latest
 
     steps:
-      - name: Récupérer le projet
+      - name: Recuperer le depot
         uses: actions/checkout@v4
 
       - name: Installer Java 17
@@ -20,9 +30,9 @@ jobs:
       - name: Installer Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Installer Android SDK 35
+      - name: Installer les outils Android
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
+          yes | sdkmanager --licenses || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Installer Gradle 8.9
@@ -31,22 +41,33 @@ jobs:
           gradle-version: '8.9'
 
       - name: Extraire le projet
+        shell: bash
         run: |
+          set -e
           mkdir -p project
-          unzip -q EntrepriseSeydouAbdou_Application_Complete_v1.1.zip -d project
-
-      - name: Vérifier le projet
-        run: |
-          ls -la project
-          ls -la project/EntrepriseSeydouAbdou_Pro
+          ZIP_FILE="$(find . -maxdepth 1 -type f -name '*.zip' -print -quit)"
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERREUR : aucun fichier ZIP trouve dans le depot."
+            exit 1
+          fi
+          unzip -q "$ZIP_FILE" -d project
+          find project -name settings.gradle -o -name settings.gradle.kts
 
       - name: Compiler l'APK
+        shell: bash
         run: |
-          cd project/EntrepriseSeydouAbdou_Pro
+          set -e
+          PROJECT_DIR="$(find project -type f -name settings.gradle -printf '%h\n' | head -n 1)"
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERREUR : fichier settings.gradle introuvable."
+            exit 1
+          fi
+          cd "$PROJECT_DIR"
           gradle assembleDebug --no-daemon
 
-      - name: Publier l'APK
+      - name: Publier le fichier APK
         uses: actions/upload-artifact@v4
         with:
-          name: EntrepriseSeydouAbdou-debug
-          path: project/EntrepriseSeydouAbdou_Pro/app/build/outputs/apk/debug/app-debug.apk
+          name: EntrepriseSeydouAbdou-APK
+          path: project/**/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
